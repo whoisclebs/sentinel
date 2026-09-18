@@ -14,6 +14,7 @@ export * from './infrastructure/release-document-reader.js';
 export * from './services/semver-tag-matcher.js';
 export * from './services/release-base-resolver.js';
 export * from './services/repository-analyzer.js';
+export * from './services/documentation-verifier.js';
 export * from './detectors/types.js';
 export * from './rag/indexer.js';
 export * from './rag/retriever.js';
