@@ -34,11 +34,28 @@ describe('Indexer', () => {
     await mkdir(join(workspace, 'knowledge-base'), { recursive: true });
     await writeFile(join(workspace, 'knowledge-base', 'receipts.md'), '# Receipts\nThe receipts worker uses an S3 bucket.\n');
 
+    const progressEvents: { root: string; index: number; total: number; relPath: string }[] = [];
     const indexer = new Indexer(workspace, new HashEmbeddingProvider());
-    const report = await indexer.run('R2026.12');
+    const report = await indexer.run('R2026.12', (event) => {
+      progressEvents.push(event);
+    });
 
     expect(report.filesIndexed).toBeGreaterThanOrEqual(3);
     expect(report.chunksIndexed).toBeGreaterThan(0);
+
+    // One of the three non-empty roots (payment-api's repo, release-documents scripts,
+    // knowledge-base) should have fired progress events, with the last call for each root
+    // reaching that root's total file count.
+    const paymentApiRoot = join('services', 'payment-api');
+    const releaseDocsRoot = join('release-documents', 'R2026.12');
+    const knowledgeBaseRoot = 'knowledge-base';
+    for (const rootLabel of [paymentApiRoot, releaseDocsRoot, knowledgeBaseRoot]) {
+      const eventsForRoot = progressEvents.filter((e) => e.root === rootLabel);
+      expect(eventsForRoot.length).toBeGreaterThan(0);
+      const lastEvent = eventsForRoot[eventsForRoot.length - 1]!;
+      expect(lastEvent.index).toBe(lastEvent.total);
+      expect(lastEvent.index).toBe(eventsForRoot.length);
+    }
 
     const state = StateService.open(join(workspace, '.sentinel', 'state.db'));
     const documents = new DocumentRepository(state);

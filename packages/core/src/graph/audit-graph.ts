@@ -32,6 +32,7 @@ export interface AuditGraphDeps {
   embeddingProvider: EmbeddingProvider;
   judgeModel: BaseChatModel;
   artifactsRoot: string;
+  onIndexProgress?: (event: { root: string; index: number; total: number; relPath: string }) => void;
 }
 
 function buildDiffExcerpt(analysis: AuditState['analyses'][number], finding: Finding): string {
@@ -70,7 +71,7 @@ async function analyzeRepositoriesNode(state: AuditState): Promise<Partial<Audit
 function loadReleaseDocumentsNode(deps: AuditGraphDeps) {
   return async (state: AuditState): Promise<Partial<AuditState>> => {
     const { bundle, issues } = await readReleaseDocuments(join(state.workspacePath, 'release-documents'), state.release);
-    await new Indexer(state.workspacePath, deps.embeddingProvider).run(state.release);
+    await new Indexer(state.workspacePath, deps.embeddingProvider).run(state.release, deps.onIndexProgress);
     return { releaseDocuments: bundle, releaseDocumentIssues: issues };
   };
 }

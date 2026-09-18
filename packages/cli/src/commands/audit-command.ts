@@ -1,6 +1,7 @@
 import { join, resolve } from 'node:path';
 import type { Command } from 'commander';
 import { resolveEmbeddingProvider, resolveJudgeModel, runAudit } from '@sentinel/core';
+import { printIndexProgress } from '../print-index-progress.js';
 
 interface AuditOptions {
   release: string;
@@ -34,7 +35,12 @@ export function registerAuditCommand(program: Command): void {
 
       const state = await runAudit(
         { release: options.release, workspacePath, dryRun: options.dryRun, markReleased: options.markReleased },
-        { embeddingProvider: resolveEmbeddingProvider(), judgeModel: resolveJudgeModel(), artifactsRoot },
+        {
+          embeddingProvider: resolveEmbeddingProvider(),
+          judgeModel: resolveJudgeModel(),
+          artifactsRoot,
+          onIndexProgress: printIndexProgress,
+        },
         (nodeName) => {
           const label = NODE_PHASE_LABELS[nodeName] ?? nodeName;
           console.log(`[sentinel] ${label} — done`);

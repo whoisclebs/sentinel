@@ -79,7 +79,10 @@ export class Indexer {
     return roots;
   }
 
-  async run(release: string | null = null): Promise<IndexReport> {
+  async run(
+    release: string | null = null,
+    onFileIndexed?: (event: { root: string; index: number; total: number; relPath: string }) => void,
+  ): Promise<IndexReport> {
     mkdirSync(dirname(this.stateFile), { recursive: true });
     mkdirSync(this.indexesDir, { recursive: true });
 
@@ -100,54 +103,58 @@ export class Indexer {
       } catch {
         continue;
       }
-      for (const file of scanned) {
+      const rootLabel = relative(this.workspacePath, root.path);
+      const total = scanned.length;
+      for (let fileIndex = 0; fileIndex < scanned.length; fileIndex += 1) {
+        const file = scanned[fileIndex]!;
         const rawContent = readFileSync(file.absPath, 'utf8');
         const content = ENV_FILE_RE.test(file.relPath) ? redactConfigValues(rawContent) : rawContent;
         const chunks = await chunker.chunk(file.relPath, content, file.language);
-        if (chunks.length === 0) continue;
+        if (chunks.length > 0) {
+          const headers = chunks.map((c) => `${file.relPath} ${c.symbol ?? ''}\n${c.content}`);
+          const embeddings: Float32Array[] = [];
+          for (let i = 0; i < headers.length; i += EMBED_BATCH) {
+            embeddings.push(...(await this.provider.embedDocuments(headers.slice(i, i + EMBED_BATCH))));
+          }
 
-        const headers = chunks.map((c) => `${file.relPath} ${c.symbol ?? ''}\n${c.content}`);
-        const embeddings: Float32Array[] = [];
-        for (let i = 0; i < headers.length; i += EMBED_BATCH) {
-          embeddings.push(...(await this.provider.embedDocuments(headers.slice(i, i + EMBED_BATCH))));
-        }
+          const chunkInputs: ChunkInput[] = [];
+          for (let i = 0; i < chunks.length; i += 1) {
+            const c = chunks[i]!;
+            chunkInputs.push({
+              kind: c.kind,
+              symbol: c.symbol,
+              identifiers: identifiersOf(c.content),
+              startLine: c.startLine,
+              endLine: c.endLine,
+              content: c.content,
+              contentHash: createHash('sha256').update(c.content).digest('hex'),
+              tokenCount: await this.provider.countTokens(c.content),
+              embedding: embeddings[i] ?? null,
+            });
+          }
 
-        const chunkInputs: ChunkInput[] = [];
-        for (let i = 0; i < chunks.length; i += 1) {
-          const c = chunks[i]!;
-          chunkInputs.push({
-            kind: c.kind,
-            symbol: c.symbol,
-            identifiers: identifiersOf(c.content),
-            startLine: c.startLine,
-            endLine: c.endLine,
-            content: c.content,
-            contentHash: createHash('sha256').update(c.content).digest('hex'),
-            tokenCount: await this.provider.countTokens(c.content),
-            embedding: embeddings[i] ?? null,
-          });
+          const { inserted } = await documents.replaceDocument(
+            {
+              path: `${rootLabel}/${file.relPath}`,
+              repository: root.repository,
+              application: root.applicationFor(file.relPath),
+              source: root.source,
+              language: file.language,
+              sizeBytes: file.sizeBytes,
+              contentHash: file.contentHash,
+              gitCommit: null,
+              indexGeneration: 1,
+            },
+            chunkInputs,
+          );
+          for (let i = 0; i < inserted.length; i += 1) {
+            const embedding = embeddings[i];
+            if (embedding) index.add(inserted[i]!.vectorId, embedding);
+          }
+          filesIndexed += 1;
+          chunksIndexed += chunks.length;
         }
-
-        const { inserted } = await documents.replaceDocument(
-          {
-            path: `${relative(this.workspacePath, root.path)}/${file.relPath}`,
-            repository: root.repository,
-            application: root.applicationFor(file.relPath),
-            source: root.source,
-            language: file.language,
-            sizeBytes: file.sizeBytes,
-            contentHash: file.contentHash,
-            gitCommit: null,
-            indexGeneration: 1,
-          },
-          chunkInputs,
-        );
-        for (let i = 0; i < inserted.length; i += 1) {
-          const embedding = embeddings[i];
-          if (embedding) index.add(inserted[i]!.vectorId, embedding);
-        }
-        filesIndexed += 1;
-        chunksIndexed += chunks.length;
+        onFileIndexed?.({ root: rootLabel, index: fileIndex + 1, total, relPath: file.relPath });
       }
     }
 
