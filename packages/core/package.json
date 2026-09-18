@@ -1,0 +1,30 @@
+{
+  "name": "@sentinel/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.24.1",
+    "execa": "^9.5.2",
+    "ulid": "^3.0.2",
+    "better-sqlite3": "^13.0.3",
+    "usearch": "^2.26.2",
+    "@huggingface/transformers": "^4.3.0",
+    "web-tree-sitter": "0.20.8",
+    "tree-sitter-wasms": "0.1.13",
+    "ignore": "^7.0.9",
+    "@langchain/core": "^0.3.27",
+    "@langchain/langgraph": "^0.2.44",
+    "@langchain/anthropic": "^0.3.13"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11"
+  }
+}

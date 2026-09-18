@@ -1,0 +1,19 @@
+{
+  "name": "sentinel-release-check",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "npm run build -w @sentinel/core && npm run build -w @sentinel/cli",
+    "typecheck": "npm run typecheck -w @sentinel/core && npm run typecheck -w @sentinel/cli",
+    "test": "vitest run",
+    "demo": "npm run build && node packages/cli/dist/bin.js audit --release R2026.12 --workspace fixtures/workspace --dry-run"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "@types/node": "^22.10.2"
+  }
+}
