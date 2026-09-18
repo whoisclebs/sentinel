@@ -47,4 +47,39 @@ describe('readReleaseDocuments', () => {
     expect(bundle.envVars).toBeNull();
     expect(issues.some((i) => i.severity === 'blocking' && i.message.includes('env-vars.md'))).toBe(true);
   });
+
+  it('raises no issue when every scripts/... reference in instructions.md points at a real file', async () => {
+    root = await mkdtemp(join(tmpdir(), 'sentinel-release-docs-'));
+    const releaseDir = join(root, 'R2026.12');
+    await mkdir(join(releaseDir, 'scripts', 'payment-api'), { recursive: true });
+    await writeFile(join(releaseDir, 'env-vars.md'), '# Env vars\nNo new vars.\n');
+    await writeFile(
+      join(releaseDir, 'instructions.md'),
+      'Run scripts/payment-api/001-migrate.sql before deploying.\n',
+    );
+    await writeFile(join(releaseDir, 'scripts', 'payment-api', '001-migrate.sql'), 'ALTER TABLE x ADD y INT;');
+
+    const { issues } = await readReleaseDocuments(root, 'R2026.12');
+
+    expect(issues.some((i) => i.severity === 'blocking' && /scripts\//.test(i.message))).toBe(false);
+  });
+
+  it('raises a blocking issue when instructions.md references a script that does not exist', async () => {
+    root = await mkdtemp(join(tmpdir(), 'sentinel-release-docs-'));
+    const releaseDir = join(root, 'R2026.12');
+    await mkdir(join(releaseDir, 'scripts', 'payment-api'), { recursive: true });
+    await writeFile(join(releaseDir, 'env-vars.md'), '# Env vars\nNo new vars.\n');
+    await writeFile(
+      join(releaseDir, 'instructions.md'),
+      'Run scripts/payment-api/does-not-exist.sql before deploying.\n',
+    );
+
+    const { issues } = await readReleaseDocuments(root, 'R2026.12');
+
+    expect(
+      issues.some(
+        (i) => i.severity === 'blocking' && i.message.includes('scripts/payment-api/does-not-exist.sql'),
+      ),
+    ).toBe(true);
+  });
 });

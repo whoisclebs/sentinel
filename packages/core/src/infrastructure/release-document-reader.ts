@@ -21,6 +21,8 @@ export interface ReleaseDocumentReadResult {
   issues: ReleaseDocumentIssue[];
 }
 
+const SCRIPT_REFERENCE_RE = /scripts\/[^\s)`]+/g;
+
 export async function readReleaseDocuments(
   releaseDocumentsRoot: string,
   release: string,
@@ -40,6 +42,19 @@ export async function readReleaseDocuments(
         severity: 'inconclusive',
         message: `Script ${script.relativePath} is not cited in instructions.md; it may not be scheduled for execution.`,
       });
+    }
+  }
+
+  if (instructions) {
+    const knownScriptPaths = new Set(scripts.map((s) => `scripts/${s.relativePath}`));
+    const referencedPaths = new Set(instructions.content.match(SCRIPT_REFERENCE_RE) ?? []);
+    for (const referencedPath of referencedPaths) {
+      if (!knownScriptPaths.has(referencedPath)) {
+        issues.push({
+          severity: 'blocking',
+          message: `instructions.md references ${referencedPath}, which does not exist under ${releaseDir}/scripts.`,
+        });
+      }
     }
   }
 
