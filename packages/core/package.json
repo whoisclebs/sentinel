@@ -22,7 +22,8 @@
     "ignore": "^7.0.9",
     "@langchain/core": "^0.3.27",
     "@langchain/langgraph": "^0.2.44",
-    "@langchain/anthropic": "^0.3.13"
+    "@langchain/anthropic": "^0.3.13",
+    "@langchain/openai": "^0.3.17"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11"
