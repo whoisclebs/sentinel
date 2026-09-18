@@ -39,10 +39,20 @@ describe('Indexer', () => {
 
     const state = StateService.open(join(workspace, '.sentinel', 'state.db'));
     const documents = new DocumentRepository(state);
-    const hits = documents.searchLexical('RECEIPT_BUCKET', 10);
-    const chunks = documents.chunksByVectorIds(hits.map((h) => h.vectorId));
+
+    const codeHits = documents.searchLexical('RECEIPT_BUCKET', 10);
+    const codeChunks = documents.chunksByVectorIds(codeHits.map((h) => h.vectorId));
+
+    const releaseHits = documents.searchLexical('ALTER', 10);
+    const releaseChunks = documents.chunksByVectorIds(releaseHits.map((h) => h.vectorId));
+
+    const knowledgeHits = documents.searchLexical('worker', 10);
+    const knowledgeChunks = documents.chunksByVectorIds(knowledgeHits.map((h) => h.vectorId));
+
     state.close();
 
-    expect(chunks.some((c) => c.source === 'code' && c.application === 'payment-api')).toBe(true);
+    expect(codeChunks.some((c) => c.source === 'code' && c.application === 'payment-api')).toBe(true);
+    expect(releaseChunks.some((c) => c.source === 'release_document' && c.application === 'payment-api')).toBe(true);
+    expect(knowledgeChunks.some((c) => c.source === 'knowledge_base' && c.application === null)).toBe(true);
   });
 });
