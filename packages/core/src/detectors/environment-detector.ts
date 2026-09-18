@@ -3,11 +3,11 @@ import type { DiffFile } from '../domain/repository.js';
 import { addedLines, removedLines } from '../infrastructure/diff-parser.js';
 import type { ChangeDetector, DetectorContext } from './types.js';
 
-const ENV_FILE_RE =
+export const ENV_FILE_RE =
   /(application[^/]*\.(ya?ml|properties)|\.env\.example|values[^/]*\.ya?ml|docker-compose[^/]*\.ya?ml)$/i;
-const YAML_KEY_RE = /^\s*([A-Za-z0-9_.-]+)\s*:/;
-const ENV_KEY_RE = /^\s*([A-Z0-9_]+)\s*=/;
-const PROPERTIES_KEY_RE = /^\s*([A-Za-z0-9_.-]+)\s*=/;
+export const YAML_KEY_RE = /^\s*([A-Za-z0-9_.-]+)\s*:/;
+export const ENV_KEY_RE = /^\s*([A-Z0-9_]+)\s*=/;
+export const PROPERTIES_KEY_RE = /^\s*([A-Za-z0-9_.-]+)\s*=/;
 
 function extractKey(line: string): string | null {
   return YAML_KEY_RE.exec(line)?.[1] ?? ENV_KEY_RE.exec(line)?.[1] ?? PROPERTIES_KEY_RE.exec(line)?.[1] ?? null;

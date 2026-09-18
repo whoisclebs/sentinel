@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import type { RagSource } from '../domain/rag.js';
+import { ENV_FILE_RE } from '../detectors/environment-detector.js';
+import { redactConfigValues } from '../infrastructure/redact-config-values.js';
 import { RepositoryDiscovery } from '../infrastructure/repository-discovery.js';
 import { ArcticEmbedXsProvider } from './vendor/retrieval/embeddings/arctic.js';
 import { sentinelCacheDir } from './vendor/retrieval/embeddings/cache-dir.js';
@@ -99,7 +101,8 @@ export class Indexer {
         continue;
       }
       for (const file of scanned) {
-        const content = readFileSync(file.absPath, 'utf8');
+        const rawContent = readFileSync(file.absPath, 'utf8');
+        const content = ENV_FILE_RE.test(file.relPath) ? redactConfigValues(rawContent) : rawContent;
         const chunks = await chunker.chunk(file.relPath, content, file.language);
         if (chunks.length === 0) continue;
 

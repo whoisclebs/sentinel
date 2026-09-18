@@ -11,6 +11,7 @@ import { buildRagQuery } from '../rag/query-builder.js';
 import { Retriever } from '../rag/retriever.js';
 import type { EmbeddingProvider } from '../rag/vendor/retrieval/embeddings/provider.js';
 import { readReleaseDocuments } from '../infrastructure/release-document-reader.js';
+import { redactConfigValues } from '../infrastructure/redact-config-values.js';
 import { writeReport } from '../infrastructure/report-writer.js';
 import { RepositoryDiscovery } from '../infrastructure/repository-discovery.js';
 import { DocumentationJudge } from '../services/documentation-judge.js';
@@ -36,11 +37,12 @@ export interface AuditGraphDeps {
 function buildDiffExcerpt(analysis: AuditState['analyses'][number], finding: Finding): string {
   const file = analysis.diffFiles.find((f) => f.path === finding.filePath);
   if (!file) return finding.evidence;
-  return file.hunks
+  const excerpt = file.hunks
     .flatMap((hunk) =>
       hunk.lines.map((line) => `${line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' '}${line.content}`),
     )
     .join('\n');
+  return redactConfigValues(excerpt);
 }
 
 async function validateInputNode(state: AuditState): Promise<Partial<AuditState>> {
