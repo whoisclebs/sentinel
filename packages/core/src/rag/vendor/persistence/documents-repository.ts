@@ -248,4 +248,16 @@ export class DocumentRepository {
       (r) => r.v,
     );
   }
+
+  getDocumentMetaByPath(
+    path: string,
+  ): { repository: string; application: string | null; source: 'code' | 'release_document' | 'knowledge_base'; gitCommit: string | null } | null {
+    const row = this.state.read((db) =>
+      db.prepare('SELECT repository, application, source, git_commit FROM documents WHERE path = ?').get(path),
+    ) as
+      | { repository: string; application: string | null; source: 'code' | 'release_document' | 'knowledge_base'; git_commit: string | null }
+      | undefined;
+    if (!row) return null;
+    return { repository: row.repository, application: row.application, source: row.source, gitCommit: row.git_commit };
+  }
 }
