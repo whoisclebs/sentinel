@@ -158,4 +158,68 @@ describe('Indexer', () => {
     expect(provider.embedDocumentsCallCount).toBeGreaterThan(0);
     expect(provider.embedDocumentsCallCount).toBeLessThan(fileCount);
   });
+
+  it('keeps each chunk\'s stored content and embedding correctly aligned across a pooled cross-file batch', async () => {
+    workspace = await mkdtemp(join(tmpdir(), 'sentinel-indexer-'));
+
+    const repo = join(workspace, 'services', 'alignment-check');
+    await mkdir(repo, { recursive: true });
+    await execa('git', ['init', '-q'], { cwd: repo });
+
+    // Four small, single-chunk files with distinct, easily-identifiable content. All four
+    // files' chunks land in one pooled embedDocuments batch (well under EMBED_BATCH=32
+    // combined), so this exercises exactly the pooling/flush bookkeeping that groups
+    // pooled-batch results back to the right file/chunk.
+    // Deliberately no underscores/camelCase in these markers: the FTS query builder
+    // (toFtsQuery/splitIdentifier) explodes underscored or camelCase identifiers into
+    // their word parts and ORs them together, so "UNIQUE_MARKER_ALPHA" would match every
+    // file here via the shared "unique"/"marker" parts. A single fused, undivided token
+    // per file keeps each lexical search scoped to exactly one file's chunk.
+    const files = [
+      { name: 'alpha.txt', marker: 'MARKERALPHATOKEN' },
+      { name: 'beta.txt', marker: 'MARKERBETATOKEN' },
+      { name: 'gamma.txt', marker: 'MARKERGAMMATOKEN' },
+      { name: 'delta.txt', marker: 'MARKERDELTATOKEN' },
+    ];
+    for (const f of files) {
+      await writeFile(join(repo, f.name), `File content for ${f.name}. ${f.marker} is present in this file only.\n`);
+    }
+
+    // HashEmbeddingProvider is deterministic: the same header text always produces the
+    // same vector, so we can independently recompute the expected embedding for a given
+    // chunk and compare it against what actually got stored.
+    const provider = new HashEmbeddingProvider();
+    const indexer = new Indexer(workspace, provider);
+    const report = await indexer.run(null);
+    expect(report.filesIndexed).toBeGreaterThanOrEqual(files.length);
+
+    const state = StateService.open(join(workspace, '.sentinel', 'state.db'));
+    const documents = new DocumentRepository(state);
+
+    for (const f of files) {
+      const hits = documents.searchLexical(f.marker, 10);
+      expect(hits.length).toBeGreaterThan(0);
+      const chunks = documents.chunksByVectorIds(hits.map((h) => h.vectorId));
+      const embeddings = documents.embeddingsByVectorIds(hits.map((h) => h.vectorId));
+      expect(chunks.length).toBeGreaterThan(0);
+
+      for (const chunk of chunks) {
+        // (a) content wasn't swapped with a different file's content.
+        expect(chunk.content).toContain(f.marker);
+        for (const other of files) {
+          if (other.name !== f.name) expect(chunk.content).not.toContain(other.marker);
+        }
+
+        // (b) the stored embedding wasn't swapped with a different chunk's embedding —
+        // reconstruct the exact header indexer.ts builds and independently recompute it.
+        const header = `${f.name} ${chunk.symbol ?? ''}\n${chunk.content}`;
+        const expectedEmbedding = await provider.embedDocument(header);
+        const storedEmbedding = embeddings.get(chunk.vectorId);
+        expect(storedEmbedding).toBeDefined();
+        expect(Array.from(storedEmbedding!)).toEqual(Array.from(expectedEmbedding));
+      }
+    }
+
+    state.close();
+  });
 });
