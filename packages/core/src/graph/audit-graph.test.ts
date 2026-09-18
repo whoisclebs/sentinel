@@ -50,10 +50,23 @@ describe('runAudit', () => {
       ],
     });
 
+    const completedNodes: string[] = [];
     const state = await runAudit(
       { release: 'R2026.12', workspacePath: workspace, dryRun: true, markReleased: false },
       { embeddingProvider: new HashEmbeddingProvider(), judgeModel, artifactsRoot },
+      (nodeName) => completedNodes.push(nodeName),
     );
+
+    expect(completedNodes).toEqual([
+      'validate_input',
+      'discover_repositories',
+      'analyze_repositories',
+      'load_release_documents',
+      'retrieve_context',
+      'judge_documentation',
+      'render_report',
+      'finish',
+    ]);
 
     expect(state.exitCode).toBe(0);
     expect(state.auditedFindings.some((f) => f.finding.subject === 'RECEIPT_BUCKET' && f.judgement.verdict === 'missing')).toBe(

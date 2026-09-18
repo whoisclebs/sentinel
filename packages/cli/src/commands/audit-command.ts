@@ -9,6 +9,17 @@ interface AuditOptions {
   markReleased: boolean;
 }
 
+const NODE_PHASE_LABELS: Record<string, string> = {
+  validate_input: 'Validating input',
+  discover_repositories: 'Discovering repositories',
+  analyze_repositories: 'Analyzing repositories',
+  load_release_documents: 'Loading release documents & indexing',
+  retrieve_context: 'Retrieving context for findings',
+  judge_documentation: 'Judging documentation coverage',
+  render_report: 'Rendering report',
+  finish: 'Finalizing',
+};
+
 export function registerAuditCommand(program: Command): void {
   program
     .command('audit')
@@ -24,6 +35,10 @@ export function registerAuditCommand(program: Command): void {
       const state = await runAudit(
         { release: options.release, workspacePath, dryRun: options.dryRun, markReleased: options.markReleased },
         { embeddingProvider: resolveEmbeddingProvider(), judgeModel: resolveJudgeModel(), artifactsRoot },
+        (nodeName) => {
+          const label = NODE_PHASE_LABELS[nodeName] ?? nodeName;
+          console.log(`[sentinel] ${label} — done`);
+        },
       );
 
       console.log(`Repositories analyzed: ${state.analyses.length}`);

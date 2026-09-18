@@ -185,13 +185,54 @@ export function buildAuditGraph(deps: AuditGraphDeps) {
   return graph.compile();
 }
 
-export async function runAudit(input: AuditInput, deps: AuditGraphDeps): Promise<AuditState> {
+export async function runAudit(
+  input: AuditInput,
+  deps: AuditGraphDeps,
+  onNodeComplete?: (nodeName: string) => void,
+): Promise<AuditState> {
   const app = buildAuditGraph(deps);
-  const result = await app.invoke({
+
+  // Seed the accumulator with the same defaults AuditStateAnnotation declares for each
+  // field (see audit-state.ts). Every reducer in that annotation is `replace`, so merging
+  // per-node partial updates onto this accumulator via Object.assign is equivalent to what
+  // the graph's own reducers would produce — no need to reimplement reducer logic here.
+  const accumulator: AuditState = {
     release: input.release,
     workspacePath: input.workspacePath,
     dryRun: input.dryRun,
     markReleased: input.markReleased,
-  });
-  return result as AuditState;
+    repositories: [],
+    analyses: [],
+    releaseDocuments: null,
+    releaseDocumentIssues: [],
+    pendingJudgements: [],
+    auditedFindings: [],
+    releaseMarks: [],
+    reportPaths: null,
+    exitCode: 0,
+  };
+
+  const stream = await app.stream(
+    {
+      release: input.release,
+      workspacePath: input.workspacePath,
+      dryRun: input.dryRun,
+      markReleased: input.markReleased,
+    },
+    { streamMode: 'updates' },
+  );
+
+  for await (const chunk of stream) {
+    // In "updates" streaming mode (single mode, no subgraph streaming), each chunk is an
+    // object with exactly one key: the name of the node that just completed, mapping to the
+    // partial state that node returned (verified against @langchain/langgraph 0.2.74's
+    // Pregel#stream / mapOutputUpdates implementation).
+    const update = chunk as Record<string, Partial<AuditState>>;
+    for (const [nodeName, partial] of Object.entries(update)) {
+      Object.assign(accumulator, partial);
+      onNodeComplete?.(nodeName);
+    }
+  }
+
+  return accumulator;
 }
