@@ -9,6 +9,8 @@ export * from './domain/report.js';
 export * from './infrastructure/git-client.js';
 export * from './infrastructure/diff-parser.js';
 export * from './infrastructure/repository-discovery.js';
+export * from './infrastructure/release-script-reader.js';
+export * from './infrastructure/release-document-reader.js';
 export * from './services/semver-tag-matcher.js';
 export * from './services/release-base-resolver.js';
 export * from './services/repository-analyzer.js';
