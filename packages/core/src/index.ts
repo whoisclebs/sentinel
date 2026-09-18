@@ -25,3 +25,5 @@ export * from './rag/indexer.js';
 export * from './rag/retriever.js';
 export * from './rag/query-builder.js';
 export * from './rag/context-formatter.js';
+export * from './graph/audit-state.js';
+export * from './graph/audit-graph.js';
