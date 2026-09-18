@@ -9,7 +9,7 @@
     "build": "npm run build -w @sentinel/core && npm run build -w @sentinel/cli",
     "typecheck": "npm run typecheck -w @sentinel/core && npm run typecheck -w @sentinel/cli",
     "test": "vitest run",
-    "demo": "npm run build && node packages/cli/dist/bin.js audit --release R2026.12 --workspace fixtures/workspace --dry-run"
+    "demo": "npm run build && node scripts/build-fixtures.mjs && node packages/cli/dist/bin.js audit --release R2026.12 --workspace fixtures/workspace --dry-run"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
