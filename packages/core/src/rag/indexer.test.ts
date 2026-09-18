@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { DocumentRepository } from './vendor/persistence/documents-repository.js';
 import { StateService } from './vendor/persistence/state-service.js';
 import { HashEmbeddingProvider } from './vendor/retrieval/embeddings/hash-provider.js';
+import type { EmbeddingProvider } from './vendor/retrieval/embeddings/provider.js';
 import { Indexer } from './indexer.js';
 
 let workspace: string;
@@ -13,6 +14,35 @@ let workspace: string;
 afterEach(async () => {
   if (workspace) await rm(workspace, { recursive: true, force: true });
 });
+
+/** Wraps HashEmbeddingProvider and counts how many times embedDocuments is invoked. */
+class CountingEmbeddingProvider implements EmbeddingProvider {
+  readonly delegate = new HashEmbeddingProvider();
+  readonly dimensions = this.delegate.dimensions;
+  readonly modelId = this.delegate.modelId;
+  embedDocumentsCallCount = 0;
+
+  embedQuery(text: string): Promise<Float32Array> {
+    return this.delegate.embedQuery(text);
+  }
+
+  embedDocument(text: string): Promise<Float32Array> {
+    return this.delegate.embedDocument(text);
+  }
+
+  embedDocuments(texts: string[]): Promise<Float32Array[]> {
+    this.embedDocumentsCallCount += 1;
+    return this.delegate.embedDocuments(texts);
+  }
+
+  countTokens(text: string): Promise<number> {
+    return this.delegate.countTokens(text);
+  }
+
+  dispose(): Promise<void> {
+    return this.delegate.dispose();
+  }
+}
 
 describe('Indexer', () => {
   it('indexes code, release documents, and the knowledge base with correct metadata tags', async () => {
@@ -103,5 +133,29 @@ describe('Indexer', () => {
     expect(allContent).not.toContain('receipts-prod-bucket-super-secret');
     expect(allContent).not.toContain('hunter2-should-not-leak');
     expect(allContent).toContain('***REDACTED***');
+  });
+
+  it('batches embedDocuments calls across small files instead of one call per file', async () => {
+    workspace = await mkdtemp(join(tmpdir(), 'sentinel-indexer-'));
+
+    const repo = join(workspace, 'services', 'tiny-files');
+    await mkdir(repo, { recursive: true });
+    await execa('git', ['init', '-q'], { cwd: repo });
+
+    // Each file is small enough to produce only 1-2 chunks (well under EMBED_BATCH=32
+    // combined), so the old per-file embedding loop would call embedDocuments once
+    // per file. Cross-file pooling should collapse these into far fewer calls.
+    const fileCount = 10;
+    for (let i = 0; i < fileCount; i += 1) {
+      await writeFile(join(repo, `file-${i}.txt`), `Small file number ${i} with a bit of content.\n`);
+    }
+
+    const provider = new CountingEmbeddingProvider();
+    const indexer = new Indexer(workspace, provider);
+    const report = await indexer.run(null);
+
+    expect(report.filesIndexed).toBeGreaterThanOrEqual(fileCount);
+    expect(provider.embedDocumentsCallCount).toBeGreaterThan(0);
+    expect(provider.embedDocumentsCallCount).toBeLessThan(fileCount);
   });
 });

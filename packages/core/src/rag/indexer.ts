@@ -8,8 +8,9 @@ import { RepositoryDiscovery } from '../infrastructure/repository-discovery.js';
 import { ArcticEmbedXsProvider } from './vendor/retrieval/embeddings/arctic.js';
 import { sentinelCacheDir } from './vendor/retrieval/embeddings/cache-dir.js';
 import { HashEmbeddingProvider } from './vendor/retrieval/embeddings/hash-provider.js';
-import type { EmbeddingProvider } from './vendor/retrieval/embeddings/provider.js';
+import { ApproxTokenCounter, type EmbeddingProvider } from './vendor/retrieval/embeddings/provider.js';
 import { createDefaultChunker } from './vendor/retrieval/chunking/router.js';
+import type { Chunk } from './vendor/retrieval/chunking/types.js';
 import { identifiersOf } from './vendor/retrieval/lexical/identifiers.js';
 import { type ChunkInput, DocumentRepository } from './vendor/persistence/documents-repository.js';
 import { IndexRepository } from './vendor/persistence/index-meta-repository.js';
@@ -19,6 +20,16 @@ import { generationFileName } from './vendor/retrieval/vector/generations.js';
 import { USearchVectorIndex } from './vendor/retrieval/vector/usearch-index.js';
 
 const EMBED_BATCH = 32;
+// Bounded concurrency pool for Phase 1 (chunking). Matches the default used by
+// RepositoryAnalyzer.analyzeRepositories (packages/core/src/services/repository-analyzer.ts)
+// for consistency; chunking is CPU/WASM-bound (tree-sitter parsing), so higher
+// concurrency mainly helps overlap I/O and doesn't scale much past a handful of workers.
+const CHUNK_CONCURRENCY = 4;
+
+interface FileChunks {
+  file: ScannedFile;
+  chunks: Chunk[];
+}
 
 export function resolveEmbeddingProvider(): EmbeddingProvider {
   if (process.env.SENTINEL_EMBEDDINGS === 'hash') return new HashEmbeddingProvider();
@@ -95,6 +106,7 @@ export class Indexer {
 
     let filesIndexed = 0;
     let chunksIndexed = 0;
+    const tokenCounter = new ApproxTokenCounter();
 
     for (const root of await this.sourceRoots(release)) {
       let scanned: ScannedFile[];
@@ -105,21 +117,76 @@ export class Indexer {
       }
       const rootLabel = relative(this.workspacePath, root.path);
       const total = scanned.length;
-      for (let fileIndex = 0; fileIndex < scanned.length; fileIndex += 1) {
-        const file = scanned[fileIndex]!;
-        const rawContent = readFileSync(file.absPath, 'utf8');
-        const content = ENV_FILE_RE.test(file.relPath) ? redactConfigValues(rawContent) : rawContent;
-        const chunks = await chunker.chunk(file.relPath, content, file.language);
-        if (chunks.length > 0) {
-          const headers = chunks.map((c) => `${file.relPath} ${c.symbol ?? ''}\n${c.content}`);
-          const embeddings: Float32Array[] = [];
-          for (let i = 0; i < headers.length; i += EMBED_BATCH) {
-            embeddings.push(...(await this.provider.embedDocuments(headers.slice(i, i + EMBED_BATCH))));
+
+      // Phase 1: chunk all files for this root concurrently (bounded pool), preserving
+      // scan order in the result array regardless of completion order.
+      const phase1: FileChunks[] = new Array(scanned.length);
+      {
+        let cursor = 0;
+        const worker = async (): Promise<void> => {
+          for (;;) {
+            const idx = cursor++;
+            if (idx >= scanned.length) return;
+            const file = scanned[idx]!;
+            const rawContent = readFileSync(file.absPath, 'utf8');
+            const content = ENV_FILE_RE.test(file.relPath) ? redactConfigValues(rawContent) : rawContent;
+            const chunks = await chunker.chunk(file.relPath, content, file.language);
+            phase1[idx] = { file, chunks };
           }
+        };
+        const workers = Array.from({ length: Math.min(CHUNK_CONCURRENCY, scanned.length) }, () => worker());
+        await Promise.all(workers);
+      }
+
+      // Phase 2: pool chunks across consecutive files into batches of up to EMBED_BATCH
+      // and embed each batch with a single call, then store completed files in scan order.
+      let poolFileIdx = 0;
+      let poolChunkIdx = 0;
+      let fileCursor = 0;
+      const embeddedByFile = new Map<number, Float32Array[]>();
+
+      for (;;) {
+        const pairs: { fi: number; ci: number }[] = [];
+        while (pairs.length < EMBED_BATCH && poolFileIdx < phase1.length) {
+          const entry = phase1[poolFileIdx]!;
+          if (poolChunkIdx >= entry.chunks.length) {
+            poolFileIdx += 1;
+            poolChunkIdx = 0;
+            continue;
+          }
+          pairs.push({ fi: poolFileIdx, ci: poolChunkIdx });
+          poolChunkIdx += 1;
+        }
+
+        if (pairs.length > 0) {
+          const headers = pairs.map(({ fi, ci }) => {
+            const entry = phase1[fi]!;
+            const c = entry.chunks[ci]!;
+            return `${entry.file.relPath} ${c.symbol ?? ''}\n${c.content}`;
+          });
+          const embeddings = await this.provider.embedDocuments(headers);
+          for (let k = 0; k < pairs.length; k += 1) {
+            const { fi } = pairs[k]!;
+            const arr = embeddedByFile.get(fi) ?? [];
+            arr.push(embeddings[k]!);
+            embeddedByFile.set(fi, arr);
+          }
+        }
+
+        while (fileCursor < phase1.length) {
+          const entry = phase1[fileCursor]!;
+          const file = entry.file;
+          if (entry.chunks.length === 0) {
+            onFileIndexed?.({ root: rootLabel, index: fileCursor + 1, total, relPath: file.relPath });
+            fileCursor += 1;
+            continue;
+          }
+          const embedded = embeddedByFile.get(fileCursor);
+          if (!embedded || embedded.length < entry.chunks.length) break;
 
           const chunkInputs: ChunkInput[] = [];
-          for (let i = 0; i < chunks.length; i += 1) {
-            const c = chunks[i]!;
+          for (let i = 0; i < entry.chunks.length; i += 1) {
+            const c = entry.chunks[i]!;
             chunkInputs.push({
               kind: c.kind,
               symbol: c.symbol,
@@ -128,8 +195,8 @@ export class Indexer {
               endLine: c.endLine,
               content: c.content,
               contentHash: createHash('sha256').update(c.content).digest('hex'),
-              tokenCount: await this.provider.countTokens(c.content),
-              embedding: embeddings[i] ?? null,
+              tokenCount: await tokenCounter.countTokens(c.content),
+              embedding: embedded[i] ?? null,
             });
           }
 
@@ -148,13 +215,17 @@ export class Indexer {
             chunkInputs,
           );
           for (let i = 0; i < inserted.length; i += 1) {
-            const embedding = embeddings[i];
+            const embedding = embedded[i];
             if (embedding) index.add(inserted[i]!.vectorId, embedding);
           }
           filesIndexed += 1;
-          chunksIndexed += chunks.length;
+          chunksIndexed += entry.chunks.length;
+          embeddedByFile.delete(fileCursor);
+          onFileIndexed?.({ root: rootLabel, index: fileCursor + 1, total, relPath: file.relPath });
+          fileCursor += 1;
         }
-        onFileIndexed?.({ root: rootLabel, index: fileIndex + 1, total, relPath: file.relPath });
+
+        if (pairs.length === 0) break;
       }
     }
 
