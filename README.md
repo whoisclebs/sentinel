@@ -1,110 +1,113 @@
 <a id="readme-top"></a>
 
 <div align="center">
-  <img src=".github/assets/logo.png" alt="Sentinela" width="160" height="160" />
+  <img src=".github/assets/logo.png" alt="SENTINEL" width="160" height="160" />
 
-  <h1>Sentinela</h1>
+  <h1>SENTINEL</h1>
 
   <p>
-    <strong>Auditoria automática de release check para aplicações multi-repositório.</strong>
+    <strong>System for Engineering Notifications, Triage, Intelligence, Evidence and Lifecycle.</strong>
   </p>
 
   <p>
-    Descobre repositórios, encontra as mudanças operacionais que ainda não
-    foram liberadas e verifica — com regras determinísticas, RAG local e um
-    LLM-as-judge — se elas estão devidamente descritas nos documentos da
-    release.
+    Automatic release-check auditing for multi-repository applications.
+    Discovers repositories, finds the operational changes that haven't
+    shipped yet, and verifies — with deterministic rules, local RAG, and an
+    LLM-as-judge — whether they're properly described in the release
+    documents.
   </p>
 
   <p>
-    <a href="#como-funciona"><strong>Como funciona</strong></a>
+    <a href="#how-it-works"><strong>How it works</strong></a>
     &middot;
-    <a href="#estrutura-do-projeto">Estrutura</a>
+    <a href="#project-layout">Layout</a>
     &middot;
-    <a href="#uso"><strong>Uso</strong></a>
+    <a href="#usage"><strong>Usage</strong></a>
     &middot;
-    <a href="#desenvolvimento">Desenvolvimento</a>
+    <a href="#development">Development</a>
     &middot;
-    <a href="docs/superpowers/specs/2026-09-18-sentinela-poc-design.md">Design spec</a>
+    <a href="docs/superpowers/specs/2026-09-18-sentinel-poc-design.md">Design spec</a>
   </p>
 </div>
 
-> **Status:** prova de conceito em implementação. Este README descreve o
-> contrato pretendido da CLI; consulte a
-> [design spec](docs/superpowers/specs/2026-09-18-sentinela-poc-design.md)
-> para as decisões de arquitetura por trás dele.
+> **Status:** proof of concept, in implementation. This README describes the
+> intended CLI contract; see the
+> [design spec](docs/superpowers/specs/2026-09-18-sentinel-poc-design.md)
+> for the architecture decisions behind it.
 
-## Por que o Sentinela existe
+## Why SENTINEL exists
 
-Uma release composta por muitos repositórios é difícil de auditar à mão:
-alguém precisa lembrar quais aplicações participam, revisar cada commit não
-liberado atrás de variável de ambiente nova, migration, recurso de nuvem ou
-integração alterada, e cruzar isso manualmente com o que foi documentado
-para a operação. O Sentinela automatiza essa auditoria **sem** catálogo
-manual de aplicações participantes: ele descobre isso sozinho a partir do
-próprio git.
+A release made up of many repositories is hard to audit by hand: someone
+has to remember which applications are part of it, review every unreleased
+commit for a new environment variable, migration, cloud resource, or
+changed integration, and manually cross-check that against what was
+documented for operations. SENTINEL automates that audit **without** a
+manual catalog of participating applications — it figures that out on its
+own, straight from git.
 
-## Como funciona
+## How it works
 
-1. **Descoberta** — encontra repositórios git recursivamente em
-   `services/` e `webapps/` (diretórios comuns ou submódulos já
-   inicializados). Nenhuma lista manual de aplicações.
-2. **Resolução de base** — para cada repositório, encontra a maior tag
-   SemVer que seja *ancestral* do commit alvo (nunca por comparação de
-   texto), calcula o diff até o HEAD e só audita quem tem commits novos.
-3. **Detecção determinística** — seis detectores (environment, database,
-   aws, messaging, integration, infrastructure) procuram evidência real no
-   diff — arquivo, linha, trecho — sem depender de LLM para constatar fatos
-   do git ou do código.
-4. **Documentos da release** — lê e valida `release-documents/<release>/`
-   (`env-vars.md`, `instructions.md`, `scripts/<aplicacao>/`), checando que
-   toda referência a script citada nas instruções realmente existe.
-5. **RAG local-first** — recupera contexto (código, documentação da release,
-   base de conhecimento) por achado usando busca híbrida (BM25 + vetorial)
-   rodando inteiramente local — o repositório nunca é enviado inteiro a um
-   provider externo.
-6. **LLM-as-judge** — avalia, achado a achado, se o release document cobre a
-   obrigação operacional detectada, com veredito (`documented` /
-   `missing` / `inconclusive`), confiança e citações obrigatórias.
-7. **Relatório** — gera `report.json` (estruturado) e `report.md` (legível,
-   pronto para anexar à GMUD) em `artifacts/<release>/`.
+1. **Discovery** — finds git repositories recursively under `services/`
+   and `webapps/` (plain directories or already-initialized submodules).
+   No manual application list.
+2. **Base resolution** — for each repository, finds the highest SemVer tag
+   that is an *ancestor* of the target commit (never by text comparison),
+   diffs it against HEAD, and only audits applications with new commits.
+3. **Deterministic detection** — six detectors (environment, database,
+   aws, messaging, integration, infrastructure) look for real evidence in
+   the diff — file, line, snippet — without relying on an LLM to establish
+   facts from git or code.
+4. **Release documents** — reads and validates
+   `release-documents/<release>/` (`env-vars.md`, `instructions.md`,
+   `scripts/<application>/`), checking that every script reference cited
+   in the instructions actually exists.
+5. **Local-first RAG** — retrieves context (code, release documentation,
+   knowledge base) per finding using hybrid search (BM25 + vector), running
+   entirely locally — the repository is never sent whole to an external
+   provider.
+6. **LLM-as-judge** — evaluates, finding by finding, whether the release
+   document covers the detected operational obligation, with a verdict
+   (`documented` / `missing` / `inconclusive`), confidence, and mandatory
+   citations.
+7. **Report** — generates `report.json` (structured) and `report.md`
+   (human-readable, ready to attach to a change request) under
+   `artifacts/<release>/`.
 
-## Estrutura do projeto
+## Project layout
 
-O Sentinela é um monorepo (npm workspaces). A lógica de auditoria vive num
-pacote de domínio separado da CLI, para que uma futura API ou interface web
-possam reutilizá-la sem duplicar código:
+SENTINEL is a monorepo (npm workspaces). Audit logic lives in a domain
+package separate from the CLI, so a future API or web UI can reuse it
+without duplicating code:
 
 ```
-sentinela/
+sentinel/
 ├── packages/
-│   ├── core/    # domínio, detectores, RAG, grafo LangGraph, serviços — sem I/O de terminal
-│   └── cli/     # comando `sentinela`, depende de @sentinela/core
-├── fixtures/    # workspaces de demonstração/teste (repositórios git locais)
-├── artifacts/   # relatórios gerados (git-ignored)
-└── docs/        # specs de design
+│   ├── core/    # domain, detectors, RAG, LangGraph graph, services — no terminal I/O
+│   └── cli/     # `sentinel` command, depends on @sentinel/core
+├── fixtures/    # demo/test workspaces (local git repositories)
+├── artifacts/   # generated reports (git-ignored)
+└── docs/        # design specs
 ```
 
-## Uso
+## Usage
 
 ```bash
-# garante um índice RAG utilizável para o workspace
-sentinela index --workspace /caminho/para/workspace
+# ensure a usable RAG index exists for the workspace
+sentinel index --workspace /path/to/workspace
 
-# audita uma release
-sentinela audit --release R2026.12 --workspace /caminho/para/workspace --dry-run
+# audit a release
+sentinel audit --release R2026.12 --workspace /path/to/workspace --dry-run
 
-# consulta o RAG diretamente
-sentinela rag search --workspace /caminho/para/workspace --query "onde é configurado o bucket de recibos?"
+# query the RAG directly
+sentinel rag search --workspace /path/to/workspace --query "where is the receipts bucket configured?"
 ```
 
-`--dry-run` sempre termina com sucesso (útil para demonstração); sem a
-flag, o comando termina com código de saída diferente de zero quando há
-pendência `missing`. Nenhuma tag, repositório ou documento é alterado durante
-a auditoria — `--mark-released` fica reservado para uma implementação futura
-explícita.
+`--dry-run` always exits successfully (useful for demos); without the flag,
+the command exits with a non-zero code when there is a `missing` pending
+item. No tag, repository, or document is ever modified during an audit —
+`--mark-released` is reserved for a future, explicit implementation.
 
-## Desenvolvimento
+## Development
 
 ```bash
 npm install
@@ -112,8 +115,9 @@ npm test
 npm run typecheck
 ```
 
-Requer Node 22+. O provedor do LLM-as-judge é resolvido por variável de
-ambiente disponível (hoje, `ANTHROPIC_API_KEY`) atrás de uma interface
-agnóstica de provedor — trocar de provedor não exige mudança no domínio.
+Requires Node 22+. The LLM-as-judge provider is resolved from whichever
+environment variable is available (today, `ANTHROPIC_API_KEY`) behind a
+provider-agnostic interface — switching providers never requires a domain
+change.
 
-<p align="right">(<a href="#readme-top">voltar ao topo</a>)</p>
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
