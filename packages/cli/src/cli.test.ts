@@ -6,7 +6,13 @@ describe('sentinel CLI', () => {
     expect(buildProgram().version()).toBe('0.1.0');
   });
 
-  it('is named sentinel', () => {
-    expect(buildProgram().name()).toBe('sentinel');
+  it('registers audit, index, and rag commands', () => {
+    const names = buildProgram().commands.map((c) => c.name());
+    expect(names).toEqual(expect.arrayContaining(['audit', 'index', 'rag']));
+  });
+
+  it('registers rag search as a subcommand of rag', () => {
+    const ragCommand = buildProgram().commands.find((c) => c.name() === 'rag')!;
+    expect(ragCommand.commands.map((c) => c.name())).toContain('search');
   });
 });
