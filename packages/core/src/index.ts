@@ -19,6 +19,7 @@ export * from './services/documentation-verifier.js';
 export * from './services/judge-prompt.js';
 export * from './services/judge-model-resolver.js';
 export * from './services/documentation-judge.js';
+export * from './services/release-marker.js';
 export * from './detectors/types.js';
 export * from './rag/indexer.js';
 export * from './rag/retriever.js';
