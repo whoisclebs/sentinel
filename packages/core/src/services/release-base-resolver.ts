@@ -32,10 +32,11 @@ export class ReleaseBaseResolver {
     ancestralTags.sort((a, b) => this.matcher.compare(a, b));
     const baseTag = ancestralTags[ancestralTags.length - 1]!;
     const commits = await this.git.logCommits(baseTag, headRef);
+    const baseCommit = await this.git.resolveRef(baseTag);
     return {
       kind: 'tag',
       baseRef: baseTag,
-      baseCommit: baseTag,
+      baseCommit,
       headCommit,
       hasNewCommits: commits.length > 0,
     };

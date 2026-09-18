@@ -19,6 +19,12 @@ export class GitClient {
     return stdout.trim();
   }
 
+  /** Resolves any ref (branch, lightweight tag, or annotated tag) to the commit SHA it points at. */
+  async resolveRef(ref: string): Promise<string> {
+    const { stdout } = await this.git(['rev-parse', `${ref}^{commit}`]);
+    return stdout.trim();
+  }
+
   async listTags(): Promise<string[]> {
     const { stdout } = await this.git(['tag', '--list']);
     return stdout

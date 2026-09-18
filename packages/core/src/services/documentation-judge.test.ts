@@ -89,4 +89,23 @@ describe('DocumentationJudge', () => {
     const judgement = await new DocumentationJudge(model).judge(baseInput);
     expect(judgement.verdict).toBe('inconclusive');
   });
+
+  it('sanitizes provider error text before it lands in the persisted rationale', async () => {
+    const rawError =
+      `request to https://api.internal-provider.example/v1/workspaces/ws_9f8e7d6c5b4a/completions failed: ` +
+      'x'.repeat(400);
+    class ThrowingModel extends FakeListChatModel {
+      override invoke(): Promise<never> {
+        return Promise.reject(new Error(rawError));
+      }
+    }
+    const model = new ThrowingModel({ responses: [] });
+    const judgement = await new DocumentationJudge(model).judge(baseInput);
+
+    expect(judgement.verdict).toBe('inconclusive');
+    expect(judgement.rationale).toContain('Judge provider failed after 3 attempts');
+    expect(judgement.rationale).not.toContain('https://api.internal-provider.example');
+    expect(judgement.rationale).not.toContain('ws_9f8e7d6c5b4a');
+    expect(judgement.rationale.length).toBeLessThan(rawError.length);
+  });
 });

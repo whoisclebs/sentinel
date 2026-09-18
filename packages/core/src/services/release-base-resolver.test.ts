@@ -43,6 +43,8 @@ describe('ReleaseBaseResolver', () => {
     expect(result.kind).toBe('tag');
     expect(result.baseRef).toBe('v1.0.0');
     expect(result.hasNewCommits).toBe(true);
+    expect(result.baseCommit).toMatch(/^[0-9a-f]{40}$/);
+    expect(result.baseCommit).not.toBe(result.baseRef);
   });
 
   it('reports no new commits when HEAD is the base tag', async () => {

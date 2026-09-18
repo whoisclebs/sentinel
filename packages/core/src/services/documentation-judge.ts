@@ -8,6 +8,13 @@ import {
 import { buildJudgePrompt, JUDGE_SYSTEM_PROMPT } from './judge-prompt.js';
 
 const MAX_ATTEMPTS = 3;
+const MAX_ERROR_LENGTH = 200;
+const URL_RE = /https?:\/\/\S+/g;
+
+function sanitizeErrorText(text: string): string {
+  const withoutUrls = text.replace(URL_RE, '[url removed]');
+  return withoutUrls.length > MAX_ERROR_LENGTH ? `${withoutUrls.slice(0, MAX_ERROR_LENGTH)}...` : withoutUrls;
+}
 
 function inconclusive(rationale: string): DocumentationJudgement {
   return {
@@ -48,6 +55,6 @@ export class DocumentationJudge {
       }
     }
 
-    return inconclusive(`Judge provider failed after ${MAX_ATTEMPTS} attempts: ${lastError}`);
+    return inconclusive(`Judge provider failed after ${MAX_ATTEMPTS} attempts: ${sanitizeErrorText(lastError)}`);
   }
 }

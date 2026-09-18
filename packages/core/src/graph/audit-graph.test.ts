@@ -61,4 +61,37 @@ describe('runAudit', () => {
     );
     expect(state.reportPaths?.jsonPath).toBeTruthy();
   });
+
+  it('never marks a repository taggable when release documents are missing, even with --mark-released', async () => {
+    workspace = await mkdtemp(join(tmpdir(), 'sentinel-graph-'));
+    artifactsRoot = await mkdtemp(join(tmpdir(), 'sentinel-graph-artifacts-'));
+
+    const paymentApi = join(workspace, 'services', 'payment-api');
+    await mkdir(paymentApi, { recursive: true });
+    await execa('git', ['init', '-q'], { cwd: paymentApi });
+    await execa('git', ['config', 'user.email', 'test@example.com'], { cwd: paymentApi });
+    await execa('git', ['config', 'user.name', 'Test'], { cwd: paymentApi });
+    await writeFile(join(paymentApi, 'app.txt'), 'v1\n');
+    await execa('git', ['add', '.'], { cwd: paymentApi });
+    await execa('git', ['commit', '-q', '-m', 'initial'], { cwd: paymentApi });
+    await execa('git', ['tag', 'v1.0.0'], { cwd: paymentApi });
+    await writeFile(join(paymentApi, 'app.txt'), 'v2\n');
+    await execa('git', ['add', '.'], { cwd: paymentApi });
+    await execa('git', ['commit', '-q', '-m', 'second commit'], { cwd: paymentApi });
+
+    // release-documents/R2026.12 exists but is empty: no env-vars.md, no instructions.md.
+    const releaseDir = join(workspace, 'release-documents', 'R2026.12');
+    await mkdir(releaseDir, { recursive: true });
+
+    const judgeModel = new FakeListChatModel({ responses: [] });
+
+    const state = await runAudit(
+      { release: 'R2026.12', workspacePath: workspace, dryRun: true, markReleased: true },
+      { embeddingProvider: new HashEmbeddingProvider(), judgeModel, artifactsRoot },
+    );
+
+    expect(state.releaseDocumentIssues.some((i) => i.severity === 'blocking')).toBe(true);
+    expect(state.releaseMarks).toHaveLength(1);
+    expect(state.releaseMarks.every((m) => m.wouldTag === false)).toBe(true);
+  });
 });

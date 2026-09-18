@@ -53,4 +53,17 @@ describe('GitClient', () => {
   it('produces a diff between base and head', async () => {
     expect(await client.diff('v1.0.0', 'HEAD')).toContain('app.txt');
   });
+
+  it('resolves a lightweight tag to its commit sha', async () => {
+    const sha = await client.resolveRef('v1.0.0');
+    expect(sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(await client.logCommits(sha, 'HEAD')).toHaveLength(1);
+  });
+
+  it('resolves an annotated tag to the commit it points at, not the tag object', async () => {
+    await execa('git', ['tag', '-a', 'v1.1.0', '-m', 'annotated'], { cwd: repoPath });
+    const sha = await client.resolveRef('v1.1.0');
+    expect(sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(sha).toBe(await client.resolveHead());
+  });
 });

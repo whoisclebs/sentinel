@@ -149,7 +149,9 @@ function renderReportNode(deps: AuditGraphDeps) {
 
     let releaseMarks: AuditState['releaseMarks'] = [];
     if (state.markReleased) {
-      const hasBlockingPendingItems = state.auditedFindings.some((f) => f.judgement.verdict === 'missing');
+      const hasBlockingPendingItems =
+        state.auditedFindings.some((f) => f.judgement.verdict === 'missing') ||
+        state.releaseDocumentIssues.some((i) => i.severity === 'blocking');
       releaseMarks = await new DryRunReleaseMarker().mark(state.release, state.analyses, hasBlockingPendingItems);
     }
     return { reportPaths, releaseMarks };
