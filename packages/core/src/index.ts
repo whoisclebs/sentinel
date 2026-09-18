@@ -15,3 +15,4 @@ export * from './services/semver-tag-matcher.js';
 export * from './services/release-base-resolver.js';
 export * from './services/repository-analyzer.js';
 export * from './detectors/types.js';
+export * from './rag/indexer.js';
