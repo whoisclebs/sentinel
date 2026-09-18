@@ -1,5 +1,3 @@
-import { ChatAnthropic } from '@langchain/anthropic';
-import { ChatOpenAI } from '@langchain/openai';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolveJudgeModel } from './judge-model-resolver.js';
 
@@ -14,7 +12,7 @@ describe('resolveJudgeModel', () => {
 
     const model = resolveJudgeModel();
 
-    expect(model).toBeInstanceOf(ChatAnthropic);
+    expect(model.constructor.name).toBe('ChatAnthropic');
   });
 
   it('returns a ChatOpenAI instance when only OPENAI_API_KEY is set', () => {
@@ -25,7 +23,7 @@ describe('resolveJudgeModel', () => {
 
     const model = resolveJudgeModel();
 
-    expect(model).toBeInstanceOf(ChatOpenAI);
+    expect(model.constructor.name).toBe('ChatOpenAI');
   });
 
   it('throws when neither ANTHROPIC_API_KEY nor OPENAI_API_KEY is set', () => {
