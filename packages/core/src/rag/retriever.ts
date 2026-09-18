@@ -3,7 +3,7 @@ import type { RagHit, RagSource } from '../domain/rag.js';
 import { DocumentRepository } from './vendor/persistence/documents-repository.js';
 import { StateService } from './vendor/persistence/state-service.js';
 import type { EmbeddingProvider } from './vendor/retrieval/embeddings/provider.js';
-import { HybridRetriever } from './vendor/retrieval/service/hybrid-retriever.js';
+import { DEFAULT_RETRIEVER_CONSTANTS, HybridRetriever } from './vendor/retrieval/service/hybrid-retriever.js';
 import { USearchVectorIndex } from './vendor/retrieval/vector/usearch-index.js';
 
 export interface RetrieverFilter {
@@ -24,7 +24,12 @@ export class Retriever {
       file: join(workspacePath, '.sentinel', 'indexes', 'repository-00001.usearch'),
     });
     index.load();
-    this.hybrid = new HybridRetriever({ documents: this.documents, provider, index });
+    this.hybrid = new HybridRetriever({
+      documents: this.documents,
+      provider,
+      index,
+      constants: { ...DEFAULT_RETRIEVER_CONSTANTS, maxResults: 100 },
+    });
   }
 
   async search(query: string, limit: number, filter: RetrieverFilter = {}): Promise<RagHit[]> {
