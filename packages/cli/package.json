@@ -1,0 +1,15 @@
+{
+  "name": "@sentinel/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "sentinel": "./dist/bin.js" },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sentinel/core": "*",
+    "commander": "^13.0.0"
+  }
+}
